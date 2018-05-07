@@ -1,0 +1,448 @@
+---
+title: "Novels by Dan Brown Textmining - Shiny"
+runtime: shiny
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This R Markdown document is made interactive using Shiny. 
+
+## Make Packages Available
+
+Here I load all the packages necessary for this project. The first thing I need to do is load some packages that I'm going to be using. I use pacman simply to manage packages, and tm is a text mining and that will give us most of our functionality. SnowballC adds some additional text analysis, and dplyr is for manipulating data and for arranging the code using pipes, where the output of one command feeds directly into the input of another one. 
+
+```{r load, echo=TRUE, message=FALSE, warning=FALSE}
+library(shiny)
+library(wordcloud)
+library(devtools)
+library(tidyverse)      
+library(stringr)        
+library(tidytext)
+library(dplyr)
+library(reshape2)
+library(igraph)
+library(ggraph)
+library(memoise)
+if (packageVersion("devtools") < 1.6) {
+  install.packages("devtools")
+}
+pacman::p_load(pacman, tm, SnowballC, dplyr)
+```
+
+
+## Import Three Books 
+
+The books this project is going to do textmining and sentiment analysis on are three novels by Dan Brown - "Angels & Demons", "The Da Vinci Code", and "The Lost Symbol". I'll start by importing book data, which is the full content of the three books. I have everything in the same directory, so there's no need to give a specific file path. I've already removed the metadata at the beginning and the end of the documents, so all that's left is the novels themselves.
+
+```{r import}
+# "Angels & Demons" by Dan Brown, published 2000
+bookAAD <- readLines('ANGELS AND DEMONS.txt')
+
+# "The Da Vinci Code" by Dan Brown, published 2003
+bookDVC <- readLines('The Da Vinci Code.txt')
+
+# "The Lost Symbol" by Dan Brown, pubished 2009
+bookTLS <- readLines('The Lost Symbol.txt')
+
+```
+
+I'll begin by giving the data of every single book respectively, and then I'll compare their features in a set of 2 books and 3 later. First, I'm going to create a Corpus, which is a body of text for each book. I'll begin by creating what I call a preliminary corpus, because I'm going to do some later clean-up on it. These commands come from tm, for text mining. I'm going to remove the punctuation, any numbers, change everything to lowercase, and remove stopwords. Stopwords are words such as "the", "I", "but", which are usually meaningless when doing text mining.  
+
+I'm also going to stem the documents, and what that does is it takes a word like, "Stop" and it takes the variations of it, "Stops, stopped, stopping," and it cuts off those end parts and leaves us with just the beginning, "Stop." 
+
+```{r}
+# CORPUS FOR ANGELS & DEMONS 
+
+# Preliminary corpus
+corpusAAD <- Corpus(VectorSource(bookAAD)) %>%
+  tm_map(removePunctuation) %>%
+  tm_map(removeNumbers) %>%
+  tm_map(content_transformer(tolower)) %>%
+  tm_map(removeWords, stopwords("english")) %>%
+  tm_map(stripWhitespace) %>%
+  tm_map(stemDocument)
+
+# Create term-document matrices & remove sparse terms
+tdmAAD <- DocumentTermMatrix(corpusAAD) %>%
+  removeSparseTerms(1 - (5/length(corpusAAD)))
+
+```
+
+
+## Word Frequencies
+
+Now I'm going to get absolute frequencies for each word, and then  relative frequencies
+
+```{r}
+# Calculate and sort by word frequencies
+word.freqAAD <- sort(colSums(as.matrix(tdmAAD)),
+                     decreasing = T)
+
+# Create frequency table
+tableAAD <- data.frame(word = names(word.freqAAD),
+                       absolute.frequency = word.freqAAD,
+                       relative.frequency =
+                         word.freqAAD/length(word.freqAAD))
+
+# Remove the words from the row names
+rownames(tableAAD) <- NULL
+
+# Show the 10 most common words
+head(tableAAD, 10)
+```
+
+As we can see in the table, Dan Brown uses "angel" 211 times and the relative frequency of "angel" is about 0.84. 
+
+I'm now going to create a csv file that has the most common words together with their absolute and relative frequencies. The file name will be AAD_1000 in which AAD stands for Angels And Demons. The file will be saved to the same directory where I have my other documents.  
+
+```{r}
+# Export the 1000 most common words in CSV files
+write.csv(tableAAD[1:1000, ], "AAD_1000.csv")
+```
+
+I'll repeat the same steps described above on the other two books in the following codes.
+
+```{r}
+# CORPUS FOR THE DA VINCI CODE
+
+corpusDVC <- Corpus(VectorSource(bookDVC)) %>%
+  tm_map(removePunctuation) %>%
+  tm_map(removeNumbers) %>%
+  tm_map(content_transformer(tolower)) %>%
+  tm_map(removeWords, stopwords("english")) %>%
+  tm_map(stripWhitespace) %>%
+  tm_map(stemDocument)
+tdmDVC <- DocumentTermMatrix(corpusDVC) %>%
+  removeSparseTerms(1 - (5/length(corpusDVC)))
+word.freqDVC <- sort(colSums(as.matrix(tdmDVC)),
+                     decreasing = T)
+tableDVC <- data.frame(word = names(word.freqDVC),
+                       absolute.frequency = word.freqDVC,
+                       relative.frequency =
+                         word.freqDVC/length(word.freqDVC))
+rownames(tableDVC) <- NULL
+head(tableDVC, 10)
+
+```
+
+```{r}
+write.csv(tableDVC[1:1000, ], "DVC_1000.csv")
+```
+
+```{r}
+# CORPUS FOR THE LOST SYMBOL 
+
+corpusTLS <- Corpus(VectorSource(bookTLS)) %>%
+  tm_map(removePunctuation) %>%
+  tm_map(removeNumbers) %>%
+  tm_map(content_transformer(tolower)) %>%
+  tm_map(removeWords, stopwords("english")) %>%
+  tm_map(stripWhitespace) %>%
+  tm_map(stemDocument)
+tdmTLS <- DocumentTermMatrix(corpusTLS) %>%
+  removeSparseTerms(1 - (5/length(corpusTLS)))
+word.freqTLS <- sort(colSums(as.matrix(tdmTLS)),
+                     decreasing = T)
+tableTLS <- data.frame(word = names(word.freqTLS),
+                       absolute.frequency = word.freqTLS,
+                       relative.frequency =
+                         word.freqTLS/length(word.freqTLS))
+rownames(tableTLS) <- NULL
+head(tableTLS, 10)
+write.csv(tableTLS[1:1000, ], "TLS_1000.csv")
+```
+
+Here's the part where I'll compare their features in a set of 2 books to find out the most distinctive words. I'm going to create one called dProp, which is for a difference in proportions. Now, in this case, I'm simply taking the difference, a subtraction.
+
+"Angels & Demons" vs "The Da Vinci Code"
+
+```{r}
+# MOST DISTINCTIVE WORDS ################################
+
+# Set number of digits for output
+options(digits = 2)
+
+# Compare relative frequencies (via subtraction) 
+# ("Angels & Demons" vs "The Da Vinci Code")
+AADvsDVC <- tableAAD %>%
+  merge(tableDVC, by = "word") %>%
+  mutate(dProp = 
+           relative.frequency.x - 
+           relative.frequency.y,
+         dAbs = abs(dProp)) %>%
+  arrange(desc(dAbs)) %>%
+  rename(AAD.freq = absolute.frequency.x,
+         AAD.prop = relative.frequency.x,
+         DVC.freq = absolute.frequency.y,
+         DVC.freq = relative.frequency.y)
+
+# Show the 10 most distinctive terms
+head(AADvsDVC, 10)
+
+# Save full table to CSV
+write.csv(AADvsDVC, "AAD vs DVC.csv")
+```
+
+
+As we can see in the table above, "angel" appears 211 times in Angels & Demons, while it only appears 6 times in The Da Vinci Code, which makes sense given the story. That's why it has a positive dProp, or difference in proportions. The full table is going to be saved as a csv file in the same directory. 
+
+I'll continue the same steps for the other two sets. 
+
+"Angels & Demons" vs "The Lost Symbol"
+
+```{r}
+# ("Angels & Demons" vs "The Lost Symbol")
+AADvsTLS <- tableAAD %>%
+  merge(tableTLS, by = "word") %>%
+  mutate(dProp = 
+           relative.frequency.x - 
+           relative.frequency.y,
+         dAbs = abs(dProp)) %>%
+  arrange(desc(dAbs)) %>%
+  rename(AAD.freq = absolute.frequency.x,
+         AAD.prop = relative.frequency.x,
+         TLS.freq = absolute.frequency.y,
+         TLS.freq = relative.frequency.y)
+head(AADvsTLS, 10)
+write.csv(AADvsTLS, "AAD vs TLS.csv")
+```
+
+"The Da Vinci Code" vs "The Lost Symbol"
+
+```{r}
+# ("The Da Vinci Code" vs "The Lost Symbol")
+DVCvsTLS <- tableDVC %>%
+  merge(tableTLS, by = "word") %>%
+  mutate(dProp = 
+           relative.frequency.x - 
+           relative.frequency.y,
+         dAbs = abs(dProp)) %>%
+  arrange(desc(dAbs)) %>%
+  rename(DVC.freq = absolute.frequency.x,
+         DVC.prop = relative.frequency.x,
+         TLS.freq = absolute.frequency.y,
+         TLS.freq = relative.frequency.y)
+head(DVCvsTLS, 10)
+write.csv(DVCvsTLS, "DVC vs TLS.csv")
+```
+
+Here's the part where I'll compare their features in a set of 3 books
+
+```{r}
+# Three BOOKS DATA 
+titles <- c("Angels & Demons", "The Da Vinci Code", "The Lost Symbol")
+
+books <- list(bookAAD, bookDVC, bookTLS) 
+
+##Each book is an array in which each value in the array is a chapter 
+series <- tibble()
+for(i in seq_along(titles)) {
+  
+  temp <- tibble(chapter = seq_along(books[[i]]),
+                 text = books[[i]]) %>%
+    unnest_tokens(word, text) %>%
+    ##Here we tokenize each chapter into words
+    mutate(book = titles[i]) %>%
+    select(book, everything())
+  
+  series <- rbind(series, temp)
+}
+# set factor to keep books in order of publication
+series$book <- factor(series$book, levels = rev(titles))
+series
+
+```
+
+We can get counts for each word using the count function.
+
+```{r}
+series %>% count(word, sort = TRUE)
+```
+
+Many of the words in the top 10 most common words are stopwords. I'm going to remove the stopwords here and make a word cloud.
+
+```{r}
+# Remove stopwords and make a word cloud
+series$book <- factor(series$book, levels = rev(titles))
+series %>% 
+  anti_join(stop_words) %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 100))
+```
+
+## Sentiment derived from the NRC
+
+```{r}
+(hp_nrc <- series %>% 
+   inner_join(get_sentiments("nrc")) %>%
+   group_by(book, chapter, sentiment))
+```
+
+## Sentiment analysis using the AFINN dictionary
+
+Here I want to visualize the positive/negative sentiment for each book
+over time using the AFINN dictionary.
+
+```{r}
+series %>%    
+  inner_join(get_sentiments("afinn")) %>%
+  group_by(book, chapter) %>%
+  summarize(score = sum(score)) %>%
+  ggplot(aes(chapter, score, fill = book)) +
+  geom_col() +
+  facet_wrap(~ book, scales = "free_x") +
+  labs(title = "Emotional Arc of the Three Books",
+       subtitle = "AFINN sentiment dictionary",
+       x = "Word",
+       y = "Emotional score") +
+  theme(legend.position = "none")
+
+```
+
+Here I'm going to show the cumulative score
+
+```{r}
+# Cumulative score 
+series %>% 
+  inner_join(get_sentiments("afinn")) %>%
+  group_by(book) %>%
+  mutate(cumscore = cumsum(score)) %>%
+  ggplot(aes(chapter, cumscore, fill = book)) +
+  geom_step() +
+  facet_wrap(~ book, scales = "free_x") +
+  labs(title = "Emotional Arc of the Three Books",
+       subtitle = "AFINN sentiment dictionary",
+       x = "Word",
+       y = "Cumulative emotional score")
+```
+
+After this, I want to visualize the sentimental content of each chapter in each book using the NRC dictionary.
+
+```{r}
+hp_nrc %>%
+  count(sentiment, book, chapter) %>%
+  filter(!(sentiment %in% c("positive", "negative"))) %>%
+  # create area plot
+  ggplot(aes(x = chapter, y = n)) +
+  geom_col(aes(fill = sentiment)) + 
+  # add black smoothing line without standard error
+  geom_smooth(aes(fill = sentiment), method = "loess", se = F, col = 'black') + 
+  theme(legend.position = 'none') +
+  labs(x = "Word", y = "Emotion score", # add labels
+       title = "Emotions during the books",
+       subtitle = "Using tidytext and the nrc sentiment dictionary") +
+  # seperate plots per sentiment and book and free up x-axes
+  facet_grid(sentiment ~ book, scale = "free")
+### This chunk takes longer to execute
+```
+
+## Another sentiment analysis
+
+```{r}
+series %>%
+  right_join(get_sentiments("nrc")) %>%
+  filter(!is.na(sentiment)) %>%
+  count(sentiment, sort = TRUE)
+```
+
+The ‘bing’ lexicon only classifies words as positive or negative.
+
+```{r}
+series %>%
+  right_join(get_sentiments("bing")) %>%
+  filter(!is.na(sentiment)) %>%
+  count(sentiment, sort = TRUE)
+```
+
+Next I'm going to Use the the 'bing' lexicon for sentiment analysis
+and make a comparison cloud.
+
+```{r}
+series %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("#F8766D", "#00BFC4"),
+                   max.words = 50)
+```
+
+The comparison above still contains stopwords, and now I'm going to remove them and make a new cloud. I also use colors o separate words that are positive or negative. We can see here that character names don't appear in the following word cloud, because 'bing' doesn't classify names as positive or negative.
+
+```{r}
+series %>%
+  anti_join(stop_words) %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("#F8766D", "#00BFC4"),
+                   max.words = 50)
+```
+
+Calculating Sentiment Score
+
+```{r}
+series %>%
+  group_by(book) %>% 
+  mutate(word_count = 1:n(),
+         index = word_count %/% 500 + 1) %>% 
+  inner_join(get_sentiments("bing")) %>%
+  count(book, index = index , sentiment) %>%
+  ungroup() %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment = positive - negative,
+         book = factor(book, levels = titles)) %>%
+  ggplot(aes(index, sentiment, fill = book)) +
+  geom_bar(alpha = 0.5, stat = "identity", show.legend = FALSE) +
+  facet_wrap(~ book, ncol = 2, scales = "free_x")
+```
+
+
+
+
+
+
+
+
+
+## Inputs and Outputs
+
+You can embed Shiny inputs and outputs in your document. Outputs are automatically updated whenever inputs change.  This demonstrates how a standard R plot can be made interactive by wrapping it in the Shiny `renderPlot` function. The `selectInput` and `sliderInput` functions create the input widgets used to drive the plot.
+
+
+```{r eruptions, echo=FALSE}
+inputPanel(
+  selectInput("n_breaks", label = "Number of bins:",
+              choices = c(10, 20, 35, 50), selected = 20),
+  
+  sliderInput("bw_adjust", label = "Bandwidth adjustment:",
+              min = 0.2, max = 2, value = 1, step = 0.2)
+)
+
+renderPlot({
+  hist(faithful$eruptions, probability = TRUE, breaks = as.numeric(input$n_breaks),
+       xlab = "Duration (minutes)", main = "Geyser eruption duration")
+  
+  dens <- density(faithful$eruptions, adjust = input$bw_adjust)
+  lines(dens, col = "blue")
+})
+```
+
+## Embedded Application
+
+It's also possible to embed an entire Shiny application within an R Markdown document using the `shinyAppDir` function. This example embeds a Shiny application located in another directory:
+
+```{r tabsets, echo=FALSE}
+shinyAppDir(
+  system.file("examples/06_tabsets", package = "shiny"),
+  options = list(
+    width = "100%", height = 550
+  )
+)
+```
+
+
+
+
